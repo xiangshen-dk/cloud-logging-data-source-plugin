@@ -112,28 +112,31 @@ func NewCloudLoggingDatasource(ctx context.Context, settings backend.DataSourceI
 		}
 
 		if conf.UsingImpersonation {
-			client, client_err = cloudlogging.NewClientWithImpersonation(context.TODO(), serviceAccount, conf.ServiceAccountToImpersonate)
+			client, client_err = cloudlogging.NewClientWithImpersonation(context.Background(), serviceAccount, conf.ServiceAccountToImpersonate)
 		} else {
-			client, client_err = cloudlogging.NewClient(context.TODO(), serviceAccount)
+			client, client_err = cloudlogging.NewClient(context.Background(), serviceAccount)
 		}
 	case gceAuthentication:
 		if conf.UsingImpersonation {
-			client, client_err = cloudlogging.NewClientWithImpersonation(context.TODO(), nil, conf.ServiceAccountToImpersonate)
+			client, client_err = cloudlogging.NewClientWithImpersonation(context.Background(), nil, conf.ServiceAccountToImpersonate)
 		} else {
-			client, client_err = cloudlogging.NewClientWithGCE(context.TODO())
+			client, client_err = cloudlogging.NewClientWithGCE(context.Background())
 		}
 	case accessTokenAuthentication:
 		accessToken, ok := settings.DecryptedSecureJSONData[accessTokenKey]
 		if !ok || accessToken == "" {
 			return nil, errMissingAccessToken
 		}
-		client, client_err = cloudlogging.NewClientWithAccessToken(context.TODO(), accessToken)
+		client, client_err = cloudlogging.NewClientWithAccessToken(context.Background(), accessToken)
 	default:
 		return nil, fmt.Errorf("unknown authentication type: %s", conf.AuthType)
 	}
 
 	if client_err != nil {
-		return nil, fmt.Errorf("create client: %w", client_err)
+		if client != nil {
+			client.Close()
+		}
+		return nil, client_err
 	}
 
 	return &CloudLoggingDatasource{
@@ -186,6 +189,10 @@ func (d *CloudLoggingDatasource) CallResource(ctx context.Context, req *backend.
 		projects, err := d.client.ListProjects(ctx)
 		if err != nil {
 			log.DefaultLogger.Warn("problem listing projects", "error", err)
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusBadGateway,
+				Body:   []byte(`{"error": "Failed to list projects. Please check your permissions and authentication configuration."}`),
+			})
 		}
 
 		body, err = json.Marshal(projects)
@@ -202,6 +209,10 @@ func (d *CloudLoggingDatasource) CallResource(ctx context.Context, req *backend.
 		bucketNames, err := d.client.ListProjectBuckets(ctx, params.Get("ProjectId"))
 		if err != nil {
 			log.DefaultLogger.Warn("problem listing log buckets", "error", err)
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusBadGateway,
+				Body:   []byte(`{"error": "Failed to list log buckets. Please check your project ID and permissions."}`),
+			})
 		}
 
 		body, err = json.Marshal(bucketNames)
@@ -218,6 +229,10 @@ func (d *CloudLoggingDatasource) CallResource(ctx context.Context, req *backend.
 		views, err := d.client.ListProjectBucketViews(ctx, params.Get("ProjectId"), params.Get("BucketId"))
 		if err != nil {
 			log.DefaultLogger.Warn("problem listing log views", "error", err)
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusBadGateway,
+				Body:   []byte(`{"error": "Failed to list log views. Please check your bucket ID and permissions."}`),
+			})
 		}
 
 		body, err = json.Marshal(views)

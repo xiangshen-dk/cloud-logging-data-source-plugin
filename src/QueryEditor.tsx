@@ -35,65 +35,117 @@ export function LoggingQueryEditor({ datasource, query, range, onChange, onRunQu
   };
 
   // Apply defaults if needed
-  if (!query.projectId) {
-    datasource.getDefaultProject().then(r => query.projectId = r);
-  }
+  useEffect(() => {
+    if (!query.projectId) {
+      datasource.getDefaultProject().then((projectId) => {
+        onChange({
+          ...query,
+          projectId,
+        });
+      });
+    }
+  }, [datasource, query.projectId, onChange, query]);
 
   // Check query field from query params to support default way of propagating query from other parts of grafana.
-  if (query.query) {
-    query.queryText = query.query;
-    query.query = undefined;
-  }
+  useEffect(() => {
+    if (query.query) {
+      onChange({
+        ...query,
+        queryText: query.query,
+        query: undefined,
+      });
+    }
+  }, [query.query, onChange, query]);
 
-  if (query.queryText == null) {
-    query.queryText = defaultQuery.queryText;
-  }
-
+  useEffect(() => {
+    if (query.queryText == null) {
+      onChange({
+        ...query,
+        queryText: defaultQuery.queryText,
+      });
+    }
+  }, [query.queryText, onChange, query]);
 
   const [projects, setProjects] = useState<Array<SelectableValue<string>>>();
   useEffect(() => {
-    datasource.getProjects().then(res => {
-      setProjects(res.map(project => ({
-        label: project,
-        value: project,
-      })));
-    });
+    datasource
+      .getProjects()
+      .then((res) => {
+        setProjects(
+          res.map((project) => ({
+            label: project,
+            value: project,
+          }))
+        );
+      })
+      .catch((error) => {
+        console.error('Failed to fetch projects:', error);
+        setProjects([]);
+      });
   }, [datasource]);
 
   const [buckets, setBuckets] = useState<Array<SelectableValue<string>>>();
   useEffect(() => {
     if (!query.projectId) {
-      datasource.getDefaultProject().then(r => {
-        query.projectId = r;
-        datasource.getLogBuckets(query.projectId).then(res => {
-          setBuckets(res.map(bucket => ({
-            label: bucket,
-            value: bucket,
-          })));
+      datasource
+        .getDefaultProject()
+        .then((projectId) => {
+          onChange({
+            ...query,
+            projectId,
+          });
+          return datasource.getLogBuckets(projectId);
+        })
+        .then((res) => {
+          setBuckets(
+            res.map((bucket) => ({
+              label: bucket,
+              value: bucket,
+            }))
+          );
+        })
+        .catch((error) => {
+          console.error('Failed to fetch buckets:', error);
+          setBuckets([]);
         });
-      });
     } else if (!query.projectId.startsWith('$')) {
-      datasource.getLogBuckets(query.projectId).then(res => {
-        setBuckets(res.map(bucket => ({
-          label: bucket,
-          value: bucket,
-        })));
-      });
+      datasource
+        .getLogBuckets(query.projectId)
+        .then((res) => {
+          setBuckets(
+            res.map((bucket) => ({
+              label: bucket,
+              value: bucket,
+            }))
+          );
+        })
+        .catch((error) => {
+          console.error('Failed to fetch buckets:', error);
+          setBuckets([]);
+        });
     }
-  }, [datasource, query]);
+  }, [datasource, query.projectId, onChange, query]);
 
   const [views, setViews] = useState<Array<SelectableValue<string>>>();
   useEffect(() => {
-    const bid = query.bucketId ? query.bucketId : "global/buckets/_Default";
-    if (!bid.startsWith('$')) {
-        datasource.getLogBucketViews(query.projectId, `${bid}`).then(res => {
-            setViews(res.map(view => ({
+    const bid = query.bucketId ? query.bucketId : 'global/buckets/_Default';
+    if (!bid.startsWith('$') && query.projectId) {
+      datasource
+        .getLogBucketViews(query.projectId, bid)
+        .then((res) => {
+          setViews(
+            res.map((view) => ({
               label: view,
               value: view,
-            })));
+            }))
+          );
+        })
+        .catch((error) => {
+          console.error('Failed to fetch views:', error);
+          setViews([]);
         });
     }
-  }, [datasource, query]);
+  }, [datasource, query.projectId, query.bucketId]);
 
   /**
    * Keep an up-to-date URI that links to the equivalent query in the GCP console
@@ -103,85 +155,87 @@ export function LoggingQueryEditor({ datasource, query, range, onChange, onRunQu
       return undefined;
     }
 
-    let storageScope = "";
+    let storageScope = '';
     if (query.projectId) {
-        storageScope = `;storageScope=storage,projects/${query.projectId}`;
-    
-        if (query.bucketId) {
-            storageScope += `/locations/${query.bucketId}`;
-        } else {
-            storageScope += `/locations/global/buckets/_Default`;
-        }
-        if (query.viewId) {
-            storageScope += `/views/${query.viewId}`;
-        } else {
-            storageScope += `/views/_AllLogs`;
-        }
+      storageScope = `;storageScope=storage,projects/${query.projectId}`;
+
+      if (query.bucketId) {
+        storageScope += `/locations/${query.bucketId}`;
+      } else {
+        storageScope += `/locations/global/buckets/_Default`;
+      }
+      if (query.viewId) {
+        storageScope += `/views/${query.viewId}`;
+      } else {
+        storageScope += `/views/_AllLogs`;
+      }
     }
 
-    const encodedText = encodeURIComponent(`${query.queryText}${storageScope}`).replace(/[!'()*]/g, function(c) {
-        if (c === '(' || c === ')') {
-          return '%25' + c.charCodeAt(0).toString(16);
-        }
-        return '%' + c.charCodeAt(0).toString(16);
+    const encodedText = encodeURIComponent(`${query.queryText}${storageScope}`).replace(/[!'()*]/g, function (c) {
+      if (c === '(' || c === ')') {
+        return '%25' + c.charCodeAt(0).toString(16);
+      }
+      return '%' + c.charCodeAt(0).toString(16);
     });
     const queryText = `query=${encodedText}`;
     // If range is somehow undefined, don't add timeRange to the URI
-    const timeRange = range !== undefined ?
-      `timeRange=${range?.from?.toISOString()}%2F${range?.to?.toISOString()}`
-      : '';
+    const timeRange =
+      range !== undefined ? `timeRange=${range?.from?.toISOString()}%2F${range?.to?.toISOString()}` : '';
 
-    return `https://console.cloud.google.com/logs/query;` +
-      queryText +
-      `;${timeRange}` +
-      `?project=${query.projectId}`;
+    return `https://console.cloud.google.com/logs/query;` + queryText + `;${timeRange}` + `?project=${query.projectId}`;
   }, [query, range]);
 
   return (
     <>
       <InlineFieldRow>
-        <InlineField label='Project ID'>
+        <InlineField label="Project ID">
           <Select
             width={30}
             allowCustomValue
             formatCreateLabel={(v) => `Use project: ${v}`}
-            onChange={e => onChange({
-              ...query,
-              projectId: e.value!,
-              bucketId: query.bucketId && query.bucketId.startsWith('$') ? query.bucketId : "",
-              viewId: query.viewId && query.viewId.startsWith('$') ? query.viewId : "",
-            })}
+            onChange={(e) =>
+              onChange({
+                ...query,
+                projectId: e.value!,
+                bucketId: query.bucketId && query.bucketId.startsWith('$') ? query.bucketId : '',
+                viewId: query.viewId && query.viewId.startsWith('$') ? query.viewId : '',
+              })
+            }
             options={projects}
             value={query.projectId}
             placeholder="Select Project"
             inputId={`${query.refId}-project`}
           />
         </InlineField>
-        <InlineField label='Log Bucket'>
+        <InlineField label="Log Bucket">
           <Select
             width={40}
             allowCustomValue
             formatCreateLabel={(v) => `Use bucket: ${v}`}
-            onChange={e => onChange({
-              ...query,
-              bucketId: e.value!,
-              viewId: query.viewId && query.viewId.startsWith('$') ? query.viewId : "",
-            })}
+            onChange={(e) =>
+              onChange({
+                ...query,
+                bucketId: e.value!,
+                viewId: query.viewId && query.viewId.startsWith('$') ? query.viewId : '',
+              })
+            }
             options={buckets}
             value={query.bucketId}
             placeholder="Select Log Bucket"
             inputId={`${query.refId}-bucket`}
           />
         </InlineField>
-        <InlineField label='View'>
+        <InlineField label="View">
           <Select
             width={30}
             allowCustomValue
             formatCreateLabel={(v) => `Use view: ${v}`}
-            onChange={e => onChange({
-              ...query,
-              viewId: e.value!,
-            })}
+            onChange={(e) =>
+              onChange({
+                ...query,
+                viewId: e.value!,
+              })
+            }
             options={views}
             value={query.viewId}
             placeholder="Select View"
@@ -196,23 +250,25 @@ export function LoggingQueryEditor({ datasource, query, range, onChange, onRunQu
         rows={10}
         placeholder="Enter a Cloud Logging query (Run with Shift+Enter)"
         onBlur={onRunQuery}
-        onChange={e => onChange({
-          ...query,
-          queryText: e.currentTarget.value,
-        })}
+        onChange={(e) =>
+          onChange({
+            ...query,
+            queryText: e.currentTarget.value,
+          })
+        }
         onKeyDown={onKeyDown}
       />
-      <Tooltip content='Click to view these results in the Google Cloud console'>
+      <Tooltip content="Click to view these results in the Google Cloud console">
         <LinkButton
           href={gcpConsoleURI}
           disabled={!gcpConsoleURI}
-          target='_blank'
-          icon='external-link-alt'
-          variant='secondary'
+          target="_blank"
+          icon="external-link-alt"
+          variant="secondary"
         >
           View in Cloud Logging
         </LinkButton>
       </Tooltip>
     </>
   );
-};
+}

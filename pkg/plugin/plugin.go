@@ -177,6 +177,10 @@ func (d *CloudLoggingDatasource) CallResource(ctx context.Context, req *backend.
 		proj, err := utils.GCEDefaultProject(ctx, "")
 		if err != nil {
 			log.DefaultLogger.Warn("problem getting GCE default project", "error", err)
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusInternalServerError,
+				Body:   []byte(`{"error": "Failed to get GCE default project"}`),
+			})
 		}
 		body, err = json.Marshal(proj)
 		if err != nil {
@@ -203,8 +207,20 @@ func (d *CloudLoggingDatasource) CallResource(ctx context.Context, req *backend.
 			})
 		}
 	} else if resource == "logbuckets" {
-		reqUrl, _ := url.Parse(req.URL)
-		params, _ := url.ParseQuery(reqUrl.RawQuery)
+		reqUrl, err := url.Parse(req.URL)
+		if err != nil {
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusBadRequest,
+				Body:   []byte(`{"error": "Invalid URL"}`),
+			})
+		}
+		params, err := url.ParseQuery(reqUrl.RawQuery)
+		if err != nil {
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusBadRequest,
+				Body:   []byte(`{"error": "Invalid query parameters"}`),
+			})
+		}
 
 		bucketNames, err := d.client.ListProjectBuckets(ctx, params.Get("ProjectId"))
 		if err != nil {
@@ -223,8 +239,20 @@ func (d *CloudLoggingDatasource) CallResource(ctx context.Context, req *backend.
 			})
 		}
 	} else if resource == "logviews" {
-		reqUrl, _ := url.Parse(req.URL)
-		params, _ := url.ParseQuery(reqUrl.RawQuery)
+		reqUrl, err := url.Parse(req.URL)
+		if err != nil {
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusBadRequest,
+				Body:   []byte(`{"error": "Invalid URL"}`),
+			})
+		}
+		params, err := url.ParseQuery(reqUrl.RawQuery)
+		if err != nil {
+			return sender.Send(&backend.CallResourceResponse{
+				Status: http.StatusBadRequest,
+				Body:   []byte(`{"error": "Invalid query parameters"}`),
+			})
+		}
 
 		views, err := d.client.ListProjectBucketViews(ctx, params.Get("ProjectId"), params.Get("BucketId"))
 		if err != nil {
@@ -292,6 +320,12 @@ func (d *CloudLoggingDatasource) query(ctx context.Context, pCtx backend.PluginC
 	var q queryModel
 	response.Error = json.Unmarshal(query.JSON, &q)
 	if response.Error != nil {
+		return response
+	}
+
+	// Validate required fields
+	if q.ProjectID == "" {
+		response.Error = fmt.Errorf("project ID is required")
 		return response
 	}
 

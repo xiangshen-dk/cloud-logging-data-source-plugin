@@ -38,13 +38,18 @@ export class DataSource extends DataSourceWithBackend<Query, CloudLoggingOptions
    * @returns Project ID
    */
   async getDefaultProject() {
-    const { defaultProject, authenticationType } = this.instanceSettings.jsonData;
-    if (authenticationType === 'gce') {
-      await this.ensureGCEDefaultProject();
-      return this.instanceSettings.jsonData.gceDefaultProject || "";
-    }
+    try {
+      const { defaultProject, authenticationType } = this.instanceSettings.jsonData;
+      if (authenticationType === 'gce') {
+        await this.ensureGCEDefaultProject();
+        return this.instanceSettings.jsonData.gceDefaultProject || "";
+      }
 
-    return defaultProject || '';
+      return defaultProject || '';
+    } catch (error) {
+      console.error('Failed to get default project:', error);
+      return '';
+    }
   }
 
   async getGCEDefaultProject() {
@@ -52,9 +57,14 @@ export class DataSource extends DataSourceWithBackend<Query, CloudLoggingOptions
   }
 
   async ensureGCEDefaultProject() {
-    const { authenticationType, gceDefaultProject } = this.instanceSettings.jsonData;
-    if (authenticationType === 'gce' && !gceDefaultProject) {
-      this.instanceSettings.jsonData.gceDefaultProject = await this.getGCEDefaultProject();
+    try {
+      const { authenticationType, gceDefaultProject } = this.instanceSettings.jsonData;
+      if (authenticationType === 'gce' && !gceDefaultProject) {
+        this.instanceSettings.jsonData.gceDefaultProject = await this.getGCEDefaultProject();
+      }
+    } catch (error) {
+      console.error('Failed to ensure GCE default project:', error);
+      throw error;
     }
   }
 
@@ -64,8 +74,13 @@ export class DataSource extends DataSourceWithBackend<Query, CloudLoggingOptions
    *
    * @returns List of discovered project IDs
    */
-  getProjects(): Promise<string[]> {
-    return this.getResource(`projects`);
+  async getProjects(): Promise<string[]> {
+    try {
+      return await this.getResource(`projects`);
+    } catch (error) {
+      console.error('Failed to fetch projects:', error);
+      return [];
+    }
   }
 
   /**
@@ -74,8 +89,17 @@ export class DataSource extends DataSourceWithBackend<Query, CloudLoggingOptions
    *
    * @returns List of discovered bucket names
    */
-  getLogBuckets(projectId: string): Promise<string[]> {
-    return this.getResource(`logBuckets`, { "ProjectId": projectId });
+  async getLogBuckets(projectId: string): Promise<string[]> {
+    if (!projectId) {
+      console.warn('getLogBuckets called without projectId');
+      return [];
+    }
+    try {
+      return await this.getResource(`logBuckets`, { "ProjectId": projectId });
+    } catch (error) {
+      console.error('Failed to fetch log buckets:', error);
+      return [];
+    }
   }
 
   /**
@@ -84,8 +108,17 @@ export class DataSource extends DataSourceWithBackend<Query, CloudLoggingOptions
    *
    * @returns List of discovered bucket names
    */
-  getLogBucketViews(projectId: string, bucketId: string): Promise<string[]> {
-    return this.getResource(`logViews`, { "ProjectId": projectId, "BucketId": bucketId });
+  async getLogBucketViews(projectId: string, bucketId: string): Promise<string[]> {
+    if (!projectId || !bucketId) {
+      console.warn('getLogBucketViews called without projectId or bucketId');
+      return [];
+    }
+    try {
+      return await this.getResource(`logViews`, { "ProjectId": projectId, "BucketId": bucketId });
+    } catch (error) {
+      console.error('Failed to fetch log bucket views:', error);
+      return [];
+    }
   }
 
   applyTemplateVariables(query: Query, scopedVars: ScopedVars): Query {

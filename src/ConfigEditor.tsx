@@ -29,9 +29,19 @@ export class ConfigEditor extends PureComponent<Props> {
   };
 
   handleClick = () => {
-    this.props.options.jsonData.usingImpersonation = !this.state.isChecked;
+    const { options, onOptionsChange } = this.props;
+    const newIsChecked = !this.state.isChecked;
+    
+    onOptionsChange({
+      ...options,
+      jsonData: {
+        ...options.jsonData,
+        usingImpersonation: newIsChecked,
+      },
+    });
+    
     this.setState({
-      isChecked: !this.state.isChecked,
+      isChecked: newIsChecked,
     });
   };
   render() {
@@ -51,8 +61,16 @@ export class ConfigEditor extends PureComponent<Props> {
               id="serviceAccount"
               value={this.state.sa}
               onChange={(e) => {
-                this.setState({ sa: e.target.value }, () => {
-                  this.props.options.jsonData.serviceAccountToImpersonate = this.state.sa;
+                const newSa = e.target.value;
+                this.setState({ sa: newSa });
+                
+                const { options, onOptionsChange } = this.props;
+                onOptionsChange({
+                  ...options,
+                  jsonData: {
+                    ...options.jsonData,
+                    serviceAccountToImpersonate: newSa,
+                  },
                 });
               }}
             />

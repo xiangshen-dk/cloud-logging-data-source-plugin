@@ -1,3 +1,52 @@
-node_modules
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
 dist/
 coverage/
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS generated files
+Thumbs.db
+Desktop.ini
+
+# Go specific
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# Grafana plugin specific
+gpx_*
